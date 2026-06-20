@@ -1,1 +1,6 @@
-solaredge-modbus==0.7.2
+#
+# Keep pymodbus on the latest tested 3.x line.
+# pymodbus 4.x is intentionally excluded until the API changes are validated.
+#
+pymodbus>=3.13.0,<4
+solaredge_modbus==0.8.0
