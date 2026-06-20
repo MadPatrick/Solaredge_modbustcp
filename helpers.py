@@ -69,19 +69,20 @@ class Average:
         self.samples = []
         self.max_samples = 30
 
-    def set_max_samples(self, max):
-        self.max_samples = max
+    def set_max_samples(self, count):
+        self.max_samples = count
         if self.max_samples < 1:
             self.max_samples = 1
 
     def update(self, new_value, scale = 0):
         self.samples.append(new_value * (10 ** scale))
-        while (len(self.samples) > self.max_samples):
-            del self.samples[0]
+        self.samples = self.samples[-self.max_samples:]
 
         DomoLog(LogLevels.MAX, "Average: {} - {} values".format(self.get(), len(self.samples)))
 
     def get(self):
+        if not self.samples:
+            return 0
         return sum(self.samples) / len(self.samples)
 
 #
@@ -98,17 +99,18 @@ class Maximum:
         self.samples = []
         self.max_samples = 30
 
-    def set_max_samples(self, max):
-        self.max_samples = max
+    def set_max_samples(self, count):
+        self.max_samples = count
         if self.max_samples < 1:
             self.max_samples = 1
 
     def update(self, new_value, scale = 0):
         self.samples.append(new_value * (10 ** scale))
-        while (len(self.samples) > self.max_samples):
-            del self.samples[0]
+        self.samples = self.samples[-self.max_samples:]
 
         DomoLog(LogLevels.MAX, "Maximum: {} - {} values".format(self.get(), len(self.samples)))
 
     def get(self):
+        if not self.samples:
+            return 0
         return max(self.samples)
