@@ -4,9 +4,7 @@ A Domoticz plugin to collect data from SolarEdge power inverters over ModbusTCP.
 
 The plugin uses the `solaredge_modbus` library (<https://github.com/nmakel/solaredge_modbus>) to communicate with the inverter.
 
-The 1.x.x versions of the plugin only read the inverter data.
 
-The 2.x.x versions supports reading inverter, meter and battery data.
 
 ## Requirements
 
@@ -14,13 +12,13 @@ The inverter needs to be connected to the network (either wired or wireless) and
 
 ## Installation of the plugin
 
-Install `Domoticz` and make sure that `python 3.x` is installed on the computer.
+go to de the domoticz plugin directory
+e.g. /home/domoticz/plugins
 
-Download the plugin zip-file from [releases](https://github.com/addiejanssen/domoticz-solaredge-modbustcp-plugin/releases)
-
-Unpack the contents of the zip-file into a folder in the `plugins` folder of your Domoticz installation.
-
-Go to the folder where the plugin files were extracted to and install the dependencies:
+```
+git clone https://github.com/MadPatrick/Solaredge_modbustcp
+```
+cd /home/domoticz/plugins/Solaredge_modbustcp
 
 ```
 sudo pip3 install -r requirements.txt
@@ -29,11 +27,12 @@ sudo pip3 install -r requirements.txt
 Then restart Domoticz and the plugin should become visible in the hardware dropdown list.
 
 ## Updating the plugin
-
-Updating the plugin can be done by removing the previous version and do a clean install again. Make sure to stop the Domoticz service before you start or at least stop all hardware that is related to the plugin.
-
-Make sure that the requirements listed in the `requirements.txt` file are met. If newer versions of the `solaredge_modbus` library are required, make sure that you remove the older versions to prevent version conflicts.
-
+```
+cd /home/domoticz/plugins/Solaredge_modbustcp
+```
+```
+git pull
+```
 ## Configuration in Domoticz
 
 Once the plugin is installed, a new hardware type will be available: `SolarEdge ModbusTCP`.
