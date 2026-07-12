@@ -10,10 +10,25 @@
 
 """
 <plugin key="SolarEdge_ModbusTCP" name="SolarEdge ModbusTCP" author="Addie Janssen" version="2.1.0" externallink="https://github.com/addiejanssen/domoticz-solaredge-modbustcp-plugin">
+    <description>
+        <h2>SolarEdge Modbus TCP</h2>
+        <p><strong>Version:</strong> 2.1.0</p>
+        <p>Reads SolarEdge inverter, meter and battery data directly over Modbus TCP.</p>
+        <h3>Features</h3>
+        <ul>
+            <li>Inverter status, electrical measurements, power, energy and temperature.</li>
+            <li>Optional automatic discovery of connected meters and batteries.</li>
+            <li>Creates missing Domoticz devices when enabled.</li>
+            <li>Optional averaging and maximum-value calculations for selected measurements.</li>
+            <li>Configurable polling interval and diagnostic log level.</li>
+        </ul>
+        <h3>Configuration</h3>
+        <p>Enable Modbus TCP on the inverter, then enter its IP address, port and Modbus device address.</p>
+    </description>
     <params>
         <param field="Address" label="Inverter IP Address" width="150px" required="true" />
         <param field="Port" label="Inverter Port Number" width="150px" required="true" default="502" />
-        <param field="Mode3" label="Inverter Modbus device address" width="150px" required="true" default="1" />
+        <param field="Mode3" label="Modbus device address" width="150px" required="true" default="1" />
 
         <param field="Mode6" label="Hardware components" width="150px" required="true" default="0" >
             <options>
@@ -45,7 +60,7 @@
             </options>
         </param>
 
-        <param field="Mode4" label="Auto Avg/Max math" width="150px">
+        <param field="Mode4" label="Automatic average/maximum" width="150px">
             <options>
                 <option label="Enabled"  value="Yes" default="true" />
                 <option label="Disabled" value="No"                 />
