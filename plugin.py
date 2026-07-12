@@ -390,6 +390,25 @@ class BasePlugin:
             if device.Image != self.imageID:
                 device.Update(nValue=device.nValue, sValue=device.sValue, Image=self.imageID)
 
+    def _read_int_parameter(self, field, default, minimum=None, maximum=None):
+        raw = Parameters.get(field, "")
+        if raw is None or str(raw).strip() == "":
+            return default
+        try:
+            value = int(raw)
+            if minimum is not None and value < minimum:
+                raise ValueError
+            if maximum is not None and value > maximum:
+                raise ValueError
+            return value
+        except (TypeError, ValueError):
+            Domoticz.Error(
+                "Invalid {} value '{}'. Using default {}.".format(
+                    field, raw, default
+                )
+            )
+            return default
+
     #
     # onStart is called by Domoticz to start the processing of the plugin.
     #
@@ -403,7 +422,7 @@ class BasePlugin:
         # Get the choices of the user and turn them into something we can use
 
         # Mode 6 defines which hardware components we should scan for
-        components = int(Parameters["Mode6"]) if Parameters["Mode6"] else 0
+        components = self._read_int_parameter("Mode6", 0, 0, 3)
         if components == 1:
             self.scan_for_meters = True
         elif components == 2:
@@ -429,17 +448,19 @@ class BasePlugin:
 
         # Domoticz will generate graphs showing an interval of 5 minutes.
         # Calculate the number of samples to store over a period of 5 minutes.
-        self.max_samples = 300 // int(Parameters["Mode2"])
+        poll_interval = self._read_int_parameter("Mode2", 5, 1, 300)
+        self.max_samples = max(1, 300 // poll_interval)
 
         # Now set the interval at which the information is collected accordingly.
-        Domoticz.Heartbeat(int(Parameters["Mode2"]))
+        Domoticz.Heartbeat(poll_interval)
 
         # Set the logging level
-        SetLogLevel(LogLevels(int(Parameters["Mode5"])))
+        log_level = self._read_int_parameter("Mode5", 0, 0, 3)
+        SetLogLevel(LogLevels(log_level))
 
         self.inverter_address = Parameters["Address"]
-        self.inverter_port = int(Parameters["Port"])
-        self.inverter_unit = int(Parameters["Mode3"]) if Parameters["Mode3"] else 1
+        self.inverter_port = self._read_int_parameter("Port", 502, 1, 65535)
+        self.inverter_unit = self._read_int_parameter("Mode3", 1, 1, 247)
 
         # Lets get in touch with the inverter.
         self.connectToInverter()
@@ -662,7 +683,7 @@ class BasePlugin:
     #
     # Connect to the inverter and initialize the lookup tables.
     #
-    
+
     def connectToInverter(self):
 
         DomoLog(LogLevels.EXTRA, "Entered connectToInverter()")
@@ -672,7 +693,7 @@ class BasePlugin:
         if (self.inverter == None):
 
             # Let's go
-            DomoLog(LogLevels.MAX, 
+            DomoLog(LogLevels.MAX,
                 "onStart Address: {} Port: {} Device Address: {}".format(
                     self.inverter_address,
                     self.inverter_port,
@@ -923,7 +944,7 @@ class BasePlugin:
     # Go through the table and update matching devices
     # with the new values.
     #
-    
+
     def addUpdateDevices(self, device_name):
 
         DomoLog(LogLevels.EXTRA, "Entered addUpdateDevices()")
