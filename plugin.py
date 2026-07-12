@@ -353,6 +353,28 @@ class BasePlugin:
         self.retrydelay = timedelta(minutes = 2)
         self.retryafter = datetime.now() - timedelta(seconds = 1)
 
+    def _load_device_icon(self):
+        _IMAGE = "solaredge"
+        creating_new_icon = _IMAGE not in Images
+        try:
+            Domoticz.Image(f"{_IMAGE}.zip").Create()
+        except Exception as e:
+            Domoticz.Error(f"Unable to load icon pack '{_IMAGE}.zip': {e}")
+            return
+        if _IMAGE in Images:
+            self.imageID = Images[_IMAGE].ID
+            Domoticz.Log("Icons created and loaded." if creating_new_icon else
+                         f"Icons found in database (ImageID={self.imageID}).")
+        else:
+            Domoticz.Error(f"Unable to load icon pack '{_IMAGE}.zip'")
+
+    def _apply_device_icon(self):
+        if not self.imageID:
+            return
+        for device in Devices.values():
+            if device.Image != self.imageID:
+                device.Update(nValue=device.nValue, sValue=device.sValue, Image=self.imageID)
+
     #
     # onStart is called by Domoticz to start the processing of the plugin.
     #
@@ -360,18 +382,8 @@ class BasePlugin:
     def onStart(self):
         DomoLog(LogLevels.EXTRA, "Entered onStart()")
 
-        _IMAGE = "solaredge"
-        creating_new_icon = _IMAGE not in Images
-        Domoticz.Image(f"{_IMAGE}.zip").Create()
-
-        if _IMAGE in Images:
-            self.imageID = Images[_IMAGE].ID
-            if creating_new_icon:
-                Domoticz.Log("Icons created and loaded.")
-            else:
-                Domoticz.Log(f"Icons found in database (ImageID={self.imageID}).")
-        else:
-            Domoticz.Error(f"Unable to load icon pack '{_IMAGE}.zip'")
+        self._load_device_icon()
+        self._apply_device_icon()
 
         # Get the choices of the user and turn them into something we can use
 
