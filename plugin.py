@@ -9,10 +9,10 @@
 #
 
 """
-<plugin key="SolarEdge_ModbusTCP" name="SolarEdge ModbusTCP" author="Addie Janssen" version="2.1.0" externallink="https://github.com/addiejanssen/domoticz-solaredge-modbustcp-plugin">
+<plugin key="SolarEdge_ModbusTCP" name="SolarEdge ModbusTCP" author="Addie Janssen" version="2.1.1" externallink="https://github.com/addiejanssen/domoticz-solaredge-modbustcp-plugin">
     <description>
         <h2>SolarEdge Modbus TCP</h2>
-        <p><strong>Version:</strong> 2.1.0</p>
+        <p><strong>Version:</strong> 2.1.1</p>
         <p>Reads SolarEdge inverter, meter and battery data directly over Modbus TCP.</p>
         <h3>Features</h3>
         <ul>
@@ -370,16 +370,29 @@ class BasePlugin:
 
     def _load_device_icon(self):
         _IMAGE = "solaredge"
-        creating_new_icon = _IMAGE not in Images
+        existing_image = next(
+            (image for name, image in Images.items()
+             if str(name).casefold() == _IMAGE.casefold()),
+            None,
+        )
+        if existing_image is not None:
+            self.imageID = existing_image.ID
+            Domoticz.Log(f"Icons found in database (ImageID={self.imageID}).")
+            return
+
         try:
             Domoticz.Image(f"{_IMAGE}.zip").Create()
         except Exception as e:
             Domoticz.Error(f"Unable to load icon pack '{_IMAGE}.zip': {e}")
             return
-        if _IMAGE in Images:
-            self.imageID = Images[_IMAGE].ID
-            Domoticz.Log("Icons created and loaded." if creating_new_icon else
-                         f"Icons found in database (ImageID={self.imageID}).")
+        created_image = next(
+            (image for name, image in Images.items()
+             if str(name).casefold() == _IMAGE.casefold()),
+            None,
+        )
+        if created_image is not None:
+            self.imageID = created_image.ID
+            Domoticz.Log("Icons created and loaded.")
         else:
             Domoticz.Error(f"Unable to load icon pack '{_IMAGE}.zip'")
 
