@@ -1,6 +1,9 @@
 #
 # Keep pymodbus on the latest tested 3.x line.
 # pymodbus 4.x is intentionally excluded until the API changes are validated.
-#
-pymodbus>=3.13.0,<4
+# fallback for older Python versions
+
+pymodbus==3.6.8; python_full_version < "3.9.0"
+pymodbus>=3.13.0,<4; python_version >= "3.9"
+
 solaredge_modbus==0.8.0
