@@ -396,12 +396,42 @@ class BasePlugin:
         else:
             Domoticz.Error(f"Unable to load icon pack '{_IMAGE}.zip'")
 
+    def _safe_existing_values(self, device, target_subtype=None):
+        """Return values that Domoticz can safely accept during device updates.
+
+        Older or incorrectly converted percentage devices can contain only a
+        percent sign as sValue. Domoticz rejects that value for numerical
+        device types. Text devices may keep their existing string value.
+        """
+        n_value = device.nValue
+        s_value = str(device.sValue or "").strip()
+
+        subtype = device.SubType if target_subtype is None else target_subtype
+
+        # Domoticz General/Text subtype: any string value is valid.
+        if subtype == 0x13:
+            return n_value, s_value
+
+        # Replace invalid legacy values for numerical devices.
+        if s_value in ("", "%"):
+            DomoLog(
+                LogLevels.NORMAL,
+                'Resetting invalid sValue "{}" for device "{}"'.format(
+                    s_value,
+                    device.Name,
+                ),
+            )
+            return 0, "0"
+
+        return n_value, s_value
+
     def _apply_device_icon(self):
         if not self.imageID:
             return
         for device in Devices.values():
             if device.Image != self.imageID:
-                device.Update(nValue=device.nValue, sValue=device.sValue, Image=self.imageID)
+                n_value, s_value = self._safe_existing_values(device)
+                device.Update(nValue=n_value, sValue=s_value, Image=self.imageID)
 
     def _read_int_parameter(self, field, default, minimum=None, maximum=None):
         raw = Parameters.get(field, "")
@@ -980,23 +1010,30 @@ class BasePlugin:
             for unit in table:
                 if (unit[Column.ID] + offset) in Devices:
                     device = Devices[unit[Column.ID] + offset]
-                    if (device.Type != unit[Column.TYPE] or
-                        device.SubType != unit[Column.SUBTYPE] or
-                        device.SwitchType != unit[Column.SWITCHTYPE] or
-                        device.Options != unit[Column.OPTIONS]):
 
-                        DomoLog(LogLevels.NORMAL, "Updating device \"{}\"".format(device.Name))
+                    if (
+                        device.Type != unit[Column.TYPE]
+                        or device.SubType != unit[Column.SUBTYPE]
+                        or device.SwitchType != unit[Column.SWITCHTYPE]
+                        or device.Options != unit[Column.OPTIONS]
+                    ):
+                        DomoLog(
+                            LogLevels.NORMAL,
+                            'Updating device "{}"'.format(device.Name)
+                        )
 
-                        nValue = device.nValue
-                        sValue = device.sValue
+                        n_value, s_value = self._safe_existing_values(
+                            device,
+                            target_subtype=unit[Column.SUBTYPE]
+                        )
 
                         device.Update(
-                                Type=unit[Column.TYPE],
-                                Subtype=unit[Column.SUBTYPE],
-                                Switchtype=unit[Column.SWITCHTYPE],
-                                Options=unit[Column.OPTIONS],
-                                nValue=nValue,
-                                sValue=sValue
+                            Type=unit[Column.TYPE],
+                            Subtype=unit[Column.SUBTYPE],
+                            Switchtype=unit[Column.SWITCHTYPE],
+                            Options=unit[Column.OPTIONS],
+                            nValue=n_value,
+                            sValue=s_value
                         )
 
             # Add missing devices if needed.
