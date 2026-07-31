@@ -321,6 +321,15 @@ class Column(IntEnum):
 
 class BasePlugin:
 
+    # Compatibility with the MetersDev branch: unit 23 remains the writable
+    # maximum-production dimmer. The newer read-only RRCR state that also uses
+    # unit 23 in inverters.py is deliberately not exposed on this unit.
+    POWER_LIMIT_UNIT = 23
+    POWER_LIMIT_REGISTER = 0xF001
+    DIMMER_TYPE = 244
+    DIMMER_SUBTYPE = 73
+    DIMMER_SWITCHTYPE = 7
+
     def __init__(self):
 
         # The device dictionary will hold an entry for the inverter and each meter and battery (if applicable)
@@ -432,6 +441,117 @@ class BasePlugin:
             if device.Image != self.imageID:
                 n_value, s_value = self._safe_existing_values(device)
                 device.Update(nValue=n_value, sValue=s_value, Image=self.imageID)
+
+    def _is_power_limit_unit(self, device_name, unit, offset):
+        return (
+            device_name == "Inverter"
+            and offset == 0
+            and int(unit[Column.ID]) == self.POWER_LIMIT_UNIT
+        )
+
+    def _power_limit_device_definition(self):
+        return {
+            "Type": self.DIMMER_TYPE,
+            "Subtype": self.DIMMER_SUBTYPE,
+            "Switchtype": self.DIMMER_SWITCHTYPE,
+            "Options": {},
+            "Name": "Maximum Power Production",
+        }
+
+    def _write_active_power_limit(self, level):
+        """Write the legacy SolarEdge active-power limit (0-100 percent)."""
+        if not self.inverter or not self.inverter.connected():
+            raise ConnectionException("Inverter is not connected")
+
+        level = max(0, min(100, int(round(float(level)))))
+
+        # solaredge_modbus exposes the Modbus write method either directly on
+        # the inverter object or on its underlying client, depending on version.
+        candidates = [
+            self.inverter,
+            getattr(self.inverter, "client", None),
+            getattr(self.inverter, "_client", None),
+            getattr(self.inverter, "modbus_client", None),
+        ]
+
+        last_error = None
+        for client in candidates:
+            if client is None or not hasattr(client, "write_registers"):
+                continue
+            try:
+                response = client.write_registers(
+                    self.POWER_LIMIT_REGISTER,
+                    [level],
+                    slave=self.inverter_unit,
+                )
+            except TypeError:
+                try:
+                    response = client.write_registers(
+                        self.POWER_LIMIT_REGISTER,
+                        [level],
+                        unit=self.inverter_unit,
+                    )
+                except TypeError:
+                    response = client.write_registers(
+                        self.POWER_LIMIT_REGISTER,
+                        [level],
+                    )
+            except Exception as exc:
+                last_error = exc
+                continue
+
+            if hasattr(response, "isError") and response.isError():
+                raise RuntimeError("SolarEdge rejected the power-limit write: {}".format(response))
+            return level
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("No compatible Modbus write_registers method found")
+
+    def onCommand(self, Unit, Command, Level, Color):
+        DomoLog(
+            LogLevels.EXTRA,
+            "Entered onCommand(Unit={}, Command={}, Level={})".format(Unit, Command, Level),
+        )
+
+        if int(Unit) != self.POWER_LIMIT_UNIT:
+            DomoLog(LogLevels.NORMAL, "Ignoring command for unsupported unit {}".format(Unit))
+            return
+
+        command = str(Command or "").strip().lower()
+        if command == "on":
+            requested_level = 100
+        elif command == "off":
+            requested_level = 0
+        elif command in ("set level", "setlevel"):
+            requested_level = Level
+        else:
+            Domoticz.Error(
+                "Unsupported command '{}' for Maximum Power Production".format(Command)
+            )
+            return
+
+        try:
+            applied_level = self._write_active_power_limit(requested_level)
+        except Exception as exc:
+            Domoticz.Error(
+                "Unable to set Maximum Power Production to {}%: {}".format(
+                    requested_level, exc
+                )
+            )
+            return
+
+        if Unit in Devices:
+            Devices[Unit].Update(
+                nValue=1 if applied_level > 0 else 0,
+                sValue=str(applied_level),
+                TimedOut=0,
+            )
+
+        DomoLog(
+            LogLevels.NORMAL,
+            "Maximum Power Production set to {}%".format(applied_level),
+        )
 
     def _read_int_parameter(self, field, default, minimum=None, maximum=None):
         raw = Parameters.get(field, "")
@@ -604,6 +724,34 @@ class BasePlugin:
 
                 if (unit[Column.ID] + offset) in Devices:
                     DomoLog(LogLevels.EXTRA, str(unit[Column.ID]) + "-> device available")
+
+                    # MetersDev compatibility: unit 23 is the writable maximum-
+                    # production dimmer. Synchronize it from active_power_limit
+                    # instead of writing the RRCR text value into the dimmer.
+                    if offset == 0 and int(unit[Column.ID]) == self.POWER_LIMIT_UNIT:
+                        if "active_power_limit" not in inverter_data:
+                            missing_keys.append("'active_power_limit'")
+                            continue
+                        try:
+                            limit = max(0, min(100, int(round(float(inverter_data["active_power_limit"])))))
+                        except (TypeError, ValueError):
+                            DomoLog(
+                                LogLevels.NORMAL,
+                                "Invalid active_power_limit value: {}".format(
+                                    inverter_data.get("active_power_limit")
+                                ),
+                            )
+                            continue
+                        slider = Devices[unit[Column.ID] + offset]
+                        if str(slider.sValue) != str(limit) or slider.nValue != (1 if limit > 0 else 0):
+                            slider.Update(
+                                nValue=1 if limit > 0 else 0,
+                                sValue=str(limit),
+                                TimedOut=0,
+                            )
+                            updated += 1
+                        device_count += 1
+                        continue
 
                     # Get the value for this unit from the Inverter data
 
@@ -1010,12 +1158,21 @@ class BasePlugin:
             for unit in table:
                 if (unit[Column.ID] + offset) in Devices:
                     device = Devices[unit[Column.ID] + offset]
+                    if self._is_power_limit_unit(device_name, unit, offset):
+                        expected = self._power_limit_device_definition()
+                    else:
+                        expected = {
+                            "Type": unit[Column.TYPE],
+                            "Subtype": unit[Column.SUBTYPE],
+                            "Switchtype": unit[Column.SWITCHTYPE],
+                            "Options": unit[Column.OPTIONS],
+                        }
 
                     if (
-                        device.Type != unit[Column.TYPE]
-                        or device.SubType != unit[Column.SUBTYPE]
-                        or device.SwitchType != unit[Column.SWITCHTYPE]
-                        or device.Options != unit[Column.OPTIONS]
+                        device.Type != expected["Type"]
+                        or device.SubType != expected["Subtype"]
+                        or device.SwitchType != expected["Switchtype"]
+                        or device.Options != expected["Options"]
                     ):
                         DomoLog(
                             LogLevels.NORMAL,
@@ -1024,14 +1181,21 @@ class BasePlugin:
 
                         n_value, s_value = self._safe_existing_values(
                             device,
-                            target_subtype=unit[Column.SUBTYPE]
+                            target_subtype=expected["Subtype"]
                         )
+                        if self._is_power_limit_unit(device_name, unit, offset):
+                            try:
+                                level = max(0, min(100, int(float(s_value))))
+                            except (TypeError, ValueError):
+                                level = 100
+                            n_value = 1 if level > 0 else 0
+                            s_value = str(level)
 
                         device.Update(
-                            Type=unit[Column.TYPE],
-                            Subtype=unit[Column.SUBTYPE],
-                            Switchtype=unit[Column.SWITCHTYPE],
-                            Options=unit[Column.OPTIONS],
+                            Type=expected["Type"],
+                            Subtype=expected["Subtype"],
+                            Switchtype=expected["Switchtype"],
+                            Options=expected["Options"],
                             nValue=n_value,
                             sValue=s_value
                         )
@@ -1042,15 +1206,27 @@ class BasePlugin:
                 for unit in table:
                     if (unit[Column.ID] + offset) not in Devices:
 
-                        DomoLog(LogLevels.NORMAL, "Adding device \"{}\"".format(prepend_name + unit[Column.NAME]))
+                        if self._is_power_limit_unit(device_name, unit, offset):
+                            expected = self._power_limit_device_definition()
+                            device_label = prepend_name + expected["Name"]
+                        else:
+                            expected = {
+                                "Type": unit[Column.TYPE],
+                                "Subtype": unit[Column.SUBTYPE],
+                                "Switchtype": unit[Column.SWITCHTYPE],
+                                "Options": unit[Column.OPTIONS],
+                            }
+                            device_label = prepend_name + unit[Column.NAME]
+
+                        DomoLog(LogLevels.NORMAL, "Adding device \"{}\"".format(device_label))
 
                         Domoticz.Device(
                             Unit=unit[Column.ID] + offset,
-                            Name=prepend_name + unit[Column.NAME],
-                            Type=unit[Column.TYPE],
-                            Subtype=unit[Column.SUBTYPE],
-                            Switchtype=unit[Column.SWITCHTYPE],
-                            Options=unit[Column.OPTIONS],
+                            Name=device_label,
+                            Type=expected["Type"],
+                            Subtype=expected["Subtype"],
+                            Switchtype=expected["Switchtype"],
+                            Options=expected["Options"],
                             Used=1,
                             Image=self.imageID,
                         ).Create()
@@ -1075,3 +1251,7 @@ def onStop():
 def onHeartbeat():
     global _plugin
     _plugin.onHeartbeat()
+
+def onCommand(Unit, Command, Level, Color):
+    global _plugin
+    _plugin.onCommand(Unit, Command, Level, Color)
