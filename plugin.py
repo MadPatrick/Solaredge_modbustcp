@@ -806,7 +806,14 @@ class BasePlugin:
                             DomoLog(LogLevels.NORMAL, "Scanning for meters")
 
                             device_offset = max(inverters.InverterUnit)
-                            all_meters = self.inverter.meters()
+                            try:
+                                all_meters = self.inverter.meters()
+                            except ConnectionException as e:
+                                DomoLog(LogLevels.NORMAL, "Connection Exception while scanning for meters: {}".format(e))
+                                self.disconnectInverter()
+                                self.retryafter = datetime.now() + self.retrydelay
+                                DomoLog(LogLevels.NORMAL, "Retrying to communicate with inverter after: {}".format(self.retryafter))
+                                return
                             if all_meters:
                                 DomoLog(LogLevels.NORMAL, "Found at least one meter")
 
@@ -861,7 +868,14 @@ class BasePlugin:
                             DomoLog(LogLevels.NORMAL, "Scanning for batteries")
 
                             device_offset = max(inverters.InverterUnit) + (3 * max(meters.MeterUnit))
-                            all_batteries = self.inverter.batteries()
+                            try:
+                                all_batteries = self.inverter.batteries()
+                            except ConnectionException as e:
+                                DomoLog(LogLevels.NORMAL, "Connection Exception while scanning for batteries: {}".format(e))
+                                self.disconnectInverter()
+                                self.retryafter = datetime.now() + self.retrydelay
+                                DomoLog(LogLevels.NORMAL, "Retrying to communicate with inverter after: {}".format(self.retryafter))
+                                return
                             if all_batteries:
                                 DomoLog(LogLevels.NORMAL, "Found at least one battery")
 
@@ -977,6 +991,8 @@ class BasePlugin:
             # We updated some device types over time.
             # Let's make sure that we have the correct type setup.
 
+            updated_ids = set()
+
             for unit in table:
                 if (unit[Column.ID] + offset) in Devices:
                     device = Devices[unit[Column.ID] + offset]
@@ -998,12 +1014,13 @@ class BasePlugin:
                                 nValue=nValue,
                                 sValue=sValue
                         )
+                        updated_ids.add(unit[Column.ID] + offset)
 
             # Add missing devices if needed.
 
             if self.add_devices:
                 for unit in table:
-                    if (unit[Column.ID] + offset) not in Devices:
+                    if (unit[Column.ID] + offset) not in Devices and (unit[Column.ID] + offset) not in updated_ids:
 
                         DomoLog(LogLevels.NORMAL, "Adding device \"{}\"".format(prepend_name + unit[Column.NAME]))
 
