@@ -9,10 +9,10 @@
 #
 
 """
-<plugin key="SolarEdge_ModbusTCP" name="SolarEdge ModbusTCP" author="Addie Janssen" version="2.1.3" externallink="https://github.com/MadPatrick/Solaredge_modbustcp">
+<plugin key="SolarEdge_ModbusTCP" name="SolarEdge ModbusTCP" author="Addie Janssen" version="2.1.4" externallink="https://github.com/MadPatrick/Solaredge_modbustcp">
     <description>
         <h2>SolarEdge Modbus TCP</h2>
-        <p><strong>Version:</strong> 2.1.3</p>
+        <p><strong>Version:</strong> 2.1.4</p>
         <p>Reads SolarEdge inverter, meter and battery data directly over Modbus TCP.</p>
         <h3>Features</h3>
         <ul>
