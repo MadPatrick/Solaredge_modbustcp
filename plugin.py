@@ -422,6 +422,56 @@ class BasePlugin:
             )
             return default
 
+    def _find_device_unit(self, unit_number):
+        for device_name, device_details in self.device_dictionary.items():
+            table = device_details.get("table")
+            if not table:
+                continue
+
+            offset = device_details.get("offset", 0)
+            for unit in table:
+                if unit[Column.ID] + offset == unit_number:
+                    return device_name, device_details, unit
+
+        return None, None, None
+
+    def _normalize_percentage_level(self, value):
+        return max(0, min(100, int(round(float(value)))))
+
+    def _get_power_limit_target(self, command, level, current_level):
+        if command == "Off":
+            return 0
+
+        if command == "On":
+            if current_level > 0:
+                return current_level
+            if level and int(level) > 0:
+                return self._normalize_percentage_level(level)
+            return 100
+
+        if command == "Set Level":
+            return self._normalize_percentage_level(level)
+
+        raise ValueError("Unsupported command: {}".format(command))
+
+    def _update_device_state(self, device, unit, value):
+        if unit[Column.MODBUSNAME] == "active_power_limit":
+            level = self._normalize_percentage_level(value)
+            nValue = 2 if level > 0 else 0
+            sValue = str(level)
+        else:
+            nValue = 0
+            sValue = str(value)
+
+        if nValue != device.nValue or sValue != device.sValue:
+            device.Update(nValue=nValue, sValue=sValue, TimedOut=0)
+
+    def _write_inverter_value(self, key, value):
+        response = self.inverter.write(key, value)
+        if hasattr(response, "isError") and response.isError():
+            raise RuntimeError("Modbus write failed for {}".format(key))
+        return response
+
     #
     # onStart is called by Domoticz to start the processing of the plugin.
     #
@@ -620,8 +670,13 @@ class BasePlugin:
                     #   We should not store certain values when the inverter is sleeping.
                     #   That results in a strange graph; it would be better just to skip it then.
 
-                    if sValue != Devices[unit[Column.ID] + offset].sValue:
-                        Devices[unit[Column.ID] + offset].Update(nValue=0, sValue=str(sValue), TimedOut=0)
+                    device = Devices[unit[Column.ID] + offset]
+                    if unit[Column.MODBUSNAME] == "active_power_limit":
+                        self._update_device_state(device, unit, value)
+                        if unit[Column.MODBUSNAME] == "active_power_limit" and unit[Column.MATH]:
+                            unit[Column.MATH].samples = []
+                    elif sValue != device.sValue:
+                        device.Update(nValue=0, sValue=str(sValue), TimedOut=0)
                         updated += 1
 
                     device_count += 1
@@ -960,6 +1015,53 @@ class BasePlugin:
         DomoLog(LogLevels.EXTRA, "Entered onStop()")
         self.disconnectInverter()
 
+    def onCommand(self, Unit, Command, Level, Hue):
+        DomoLog(LogLevels.EXTRA, "Entered onCommand({}, {}, {}, {})".format(Unit, Command, Level, Hue))
+
+        device_name, device_details, unit = self._find_device_unit(Unit)
+        if not unit or device_details["type"] != "inverter" or unit[Column.MODBUSNAME] != "active_power_limit":
+            DomoLog(LogLevels.NORMAL, "Ignoring unsupported command for unit {}".format(Unit))
+            return
+
+        current_level = 0
+        if Unit in Devices:
+            try:
+                current_level = int(float(Devices[Unit].sValue))
+            except (TypeError, ValueError):
+                current_level = 0
+
+        try:
+            target_level = self._get_power_limit_target(Command, Level, current_level)
+        except ValueError as e:
+            DomoLog(LogLevels.NORMAL, str(e))
+            return
+
+        if not self.inverter or not self.inverter.connected():
+            self.connectToInverter()
+
+        if not self.inverter or not self.inverter.connected():
+            DomoLog(LogLevels.NORMAL, "Cannot change Active Power Limit because the inverter is not connected.")
+            return
+
+        try:
+            self._write_inverter_value(unit[Column.MODBUSNAME], target_level)
+            self._write_inverter_value("commit_power_control_settings", 1)
+        except (ConnectionException, RuntimeError, ValueError) as e:
+            self.disconnectInverter()
+            DomoLog(LogLevels.NORMAL, "Failed to change Active Power Limit to {}: {}".format(target_level, e))
+            return
+
+        if Unit in Devices:
+            self._update_device_state(Devices[Unit], unit, target_level)
+
+        if device_name in self.device_dictionary:
+            values = self.readDeviceValuesWithRetry(device_name, device_details)
+            if values:
+                self.processValues(device_details, values)
+
+        DomoLog(LogLevels.NORMAL, "Active Power Limit set to {}%".format(target_level))
+        DomoLog(LogLevels.EXTRA, "Leaving onCommand()")
+
     def disconnectInverter(self):
         try:
             if self.inverter:
@@ -1055,3 +1157,7 @@ def onStop():
 def onHeartbeat():
     global _plugin
     _plugin.onHeartbeat()
+
+def onCommand(Unit, Command, Level, Hue):
+    global _plugin
+    _plugin.onCommand(Unit, Command, Level, Hue)
