@@ -977,6 +977,8 @@ class BasePlugin:
             # We updated some device types over time.
             # Let's make sure that we have the correct type setup.
 
+            updated_ids = set()
+
             for unit in table:
                 if (unit[Column.ID] + offset) in Devices:
                     device = Devices[unit[Column.ID] + offset]
@@ -998,12 +1000,13 @@ class BasePlugin:
                                 nValue=nValue,
                                 sValue=sValue
                         )
+                        updated_ids.add(unit[Column.ID] + offset)
 
             # Add missing devices if needed.
 
             if self.add_devices:
                 for unit in table:
-                    if (unit[Column.ID] + offset) not in Devices:
+                    if (unit[Column.ID] + offset) not in Devices and (unit[Column.ID] + offset) not in updated_ids:
 
                         DomoLog(LogLevels.NORMAL, "Adding device \"{}\"".format(prepend_name + unit[Column.NAME]))
 
