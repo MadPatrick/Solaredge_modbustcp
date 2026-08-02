@@ -457,7 +457,7 @@ class BasePlugin:
     def _update_device_state(self, device, unit, value):
         if unit[Column.MODBUSNAME] == "active_power_limit":
             level = self._normalize_percentage_level(value)
-            nValue = 2 if level > 0 else 0
+            nValue = 1 if level > 0 else 0
             sValue = str(level)
         else:
             nValue = 0
