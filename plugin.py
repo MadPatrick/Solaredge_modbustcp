@@ -1191,14 +1191,26 @@ class BasePlugin:
                             n_value = 1 if level > 0 else 0
                             s_value = str(level)
 
-                        device.Update(
+                        # Domoticz does not update device type in-place when
+                        # Update() is called with Type/Subtype; it creates a
+                        # duplicate instead. Delete and recreate the device so
+                        # the type change takes effect without a duplicate.
+                        saved_name = device.Name
+                        device.Delete()
+                        Domoticz.Device(
+                            Unit=unit[Column.ID] + offset,
+                            Name=saved_name,
                             Type=expected["Type"],
                             Subtype=expected["Subtype"],
                             Switchtype=expected["Switchtype"],
                             Options=expected["Options"],
-                            nValue=n_value,
-                            sValue=s_value
-                        )
+                            Used=1,
+                            Image=self.imageID,
+                        ).Create()
+                        if (unit[Column.ID] + offset) in Devices:
+                            Devices[unit[Column.ID] + offset].Update(
+                                nValue=n_value, sValue=s_value, TimedOut=0
+                            )
 
             # Add missing devices if needed.
 
