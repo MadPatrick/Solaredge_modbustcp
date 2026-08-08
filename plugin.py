@@ -9,10 +9,10 @@
 #
 
 """
-<plugin key="SolarEdge_ModbusTCP" name="SolarEdge ModbusTCP" author="Addie Janssen" version="2.1.4" externallink="https://github.com/MadPatrick/Solaredge_modbustcp">
+<plugin key="SolarEdge_ModbusTCP" name="SolarEdge ModbusTCP" author="Addie Janssen" version="2.1.5" externallink="https://github.com/MadPatrick/Solaredge_modbustcp">
     <description>
         <h2>SolarEdge Modbus TCP</h2>
-        <p><strong>Version:</strong> 2.1.4</p>
+        <p><strong>Version:</strong> 2.1.5</p>
         <p>Reads SolarEdge inverter, meter and battery data directly over Modbus TCP.</p>
         <h3>Features</h3>
         <ul>
@@ -457,7 +457,7 @@ class BasePlugin:
     def _update_device_state(self, device, unit, value):
         if unit[Column.MODBUSNAME] == "active_power_limit":
             level = self._normalize_percentage_level(value)
-            nValue = 1 if level > 0 else 0
+            nValue = 2 if level > 0 else 0
             sValue = str(level)
         else:
             nValue = 0
